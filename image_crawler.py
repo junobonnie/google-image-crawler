@@ -5,8 +5,6 @@ import time
 import threading
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException
 
@@ -69,13 +67,12 @@ class ImageCrawlerApp(ctk.CTk):
             self.after(0, lambda: self.status_label.configure(text="Status: Starting..."))
             self.after(0, lambda: self.progress_bar.set(0))
 
-            # Setup WebDriver
-            service = Service(ChromeDriverManager().install())
+            # Setup WebDriver using Selenium Manager
             options = webdriver.ChromeOptions()
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
-            driver = webdriver.Chrome(service=service, options=options)
+            driver = webdriver.Chrome(options=options)
 
             # Create directory to save images
             if not os.path.exists(keyword):
