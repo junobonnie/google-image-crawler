@@ -66,9 +66,8 @@ class ImageCrawlerApp(ctk.CTk):
 
     def crawl_images(self, keyword, num_images):
         try:
-            self.status_label.configure(text="Status: Starting...")
-            self.progress_bar.set(0)
-            self.update_idletasks()
+            self.after(0, lambda: self.status_label.configure(text="Status: Starting..."))
+            self.after(0, lambda: self.progress_bar.set(0))
 
             # Setup WebDriver
             service = Service(ChromeDriverManager().install())
@@ -128,9 +127,10 @@ class ImageCrawlerApp(ctk.CTk):
                         continue
 
             # Download images
+            downloaded_count = 0
             for i, url in enumerate(list(image_urls)[:num_images]):
                 try:
-                    response = requests.get(url, stream=True)
+                    response = requests.get(url, stream=True, timeout=10)
                     response.raise_for_status()
 
                     # Try to determine file extension
@@ -149,22 +149,26 @@ class ImageCrawlerApp(ctk.CTk):
                         for chunk in response.iter_content(chunk_size=8192):
                             f.write(chunk)
 
+                    downloaded_count += 1
                     # Update progress bar
-                    progress = (i + 1) / num_images
-                    self.progress_bar.set(progress)
-                    self.status_label.configure(text=f"Status: Downloading image {i+1}/{num_images}")
-                    self.update_idletasks()
+                    progress = downloaded_count / num_images
+                    status_text = f"Status: Downloading image {downloaded_count}/{num_images}"
+                    self.after(0, lambda p=progress: self.progress_bar.set(p))
+                    self.after(0, lambda s=status_text: self.status_label.configure(text=s))
+
 
                 except Exception as e:
                     print(f"Could not download {url}. Error: {e}")
 
             driver.quit()
-            self.status_label.configure(text=f"Status: Download complete! {len(image_urls)} images saved.")
+            status_text = f"Status: Download complete! {downloaded_count} images saved."
+            self.after(0, lambda: self.status_label.configure(text=status_text))
+
         except Exception as e:
-            self.status_label.configure(text=f"Status: An error occurred: {e}")
+            self.after(0, lambda e=e: self.status_label.configure(text=f"Status: An error occurred: {e}"))
         finally:
             # Re-enable button
-             self.start_button.configure(state="normal")
+            self.after(0, lambda: self.start_button.configure(state="normal"))
 
 
 if __name__ == "__main__":
