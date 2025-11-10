@@ -19,28 +19,24 @@ class ImageCrawlerApp(ctk.CTk):
 
         self.grid_columnconfigure(1, weight=1)
 
-        # Keyword Entry
+        # UI Elements
         self.keyword_label = ctk.CTkLabel(self, text="Keyword:")
         self.keyword_label.grid(row=0, column=0, padx=20, pady=10, sticky="w")
         self.keyword_entry = ctk.CTkEntry(self, placeholder_text="e.g., cats")
         self.keyword_entry.grid(row=0, column=1, padx=20, pady=10, sticky="ew")
 
-        # Number of Images Entry
         self.num_images_label = ctk.CTkLabel(self, text="Number of Images:")
         self.num_images_label.grid(row=1, column=0, padx=20, pady=10, sticky="w")
         self.num_images_entry = ctk.CTkEntry(self, placeholder_text="e.g., 10")
         self.num_images_entry.grid(row=1, column=1, padx=20, pady=10, sticky="ew")
 
-        # Start Button
         self.start_button = ctk.CTkButton(self, text="Start Crawling", command=self.start_crawling_thread)
         self.start_button.grid(row=2, column=0, columnspan=2, padx=20, pady=10)
 
-        # Progress Bar
         self.progress_bar = ctk.CTkProgressBar(self)
         self.progress_bar.set(0)
         self.progress_bar.grid(row=3, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
 
-        # Status Label
         self.status_label = ctk.CTkLabel(self, text="Status: Ready")
         self.status_label.grid(row=4, column=0, columnspan=2, padx=20, pady=10)
 
@@ -49,10 +45,10 @@ class ImageCrawlerApp(ctk.CTk):
         num_images_str = self.num_images_entry.get()
 
         if not keyword:
-            self.status_label.configure(text="Status: Please enter a keyword.")
+            self.update_gui(text="Status: Please enter a keyword.")
             return
         if not num_images_str.isdigit() or int(num_images_str) <= 0:
-            self.status_label.configure(text="Status: Please enter a valid number of images.")
+            self.update_gui(text="Status: Please enter a valid number of images.")
             return
 
         num_images = int(num_images_str)
@@ -89,20 +85,16 @@ class ImageCrawlerApp(ctk.CTk):
             self.after(0, self.update_gui, "Status: Searching for images...")
 
             while len(image_urls) < num_images:
-                # Scroll down
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(2)
 
-                # Find thumbnails
                 thumbnails = driver.find_elements(By.CSS_SELECTOR, "img.rg_i")
 
-                for img in thumbnails[len(image_urls):num_images]:
+                for img in thumbnails[len(image_urls):]:
                     try:
-                        # Click on the thumbnail
                         driver.execute_script("arguments[0].click();", img)
                         time.sleep(1)
 
-                        # Wait for the high-res image to load and extract its URL
                         wait = WebDriverWait(driver, 10)
                         high_res_images = wait.until(
                             EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'img.sFlh5c'))
@@ -119,25 +111,22 @@ class ImageCrawlerApp(ctk.CTk):
                             break
 
                     except (ElementClickInterceptedException, TimeoutException):
-                        continue # Skip if thumbnail is not clickable or high-res image doesn't load
+                        continue
                     except Exception as e:
                         print(f"Error collecting image URL: {e}")
 
-                # Check if we need to load more results
                 new_height = driver.execute_script("return document.body.scrollHeight")
                 if new_height == last_height:
                     try:
-                        # Try to click the "Show more results" button
                         more_results_button = driver.find_element(By.CSS_SELECTOR, "input.mye4qd")
                         if more_results_button.is_displayed():
                             driver.execute_script("arguments[0].click();", more_results_button)
                             time.sleep(2)
                         else:
-                            break # No more results to load
+                            break
                     except NoSuchElementException:
-                        break # Reached the end of the page
+                        break
                 last_height = new_height
-
 
             # Download images
             downloaded_count = 0
@@ -161,7 +150,6 @@ class ImageCrawlerApp(ctk.CTk):
                     downloaded_count += 1
                     progress = downloaded_count / num_images
                     self.after(0, self.update_gui, f"Status: Downloading {downloaded_count}/{num_images}...", progress)
-
                 except Exception as e:
                     print(f"Could not download {url}. Error: {e}")
 
@@ -172,7 +160,6 @@ class ImageCrawlerApp(ctk.CTk):
             self.after(0, self.update_gui, f"Status: An error occurred: {e}")
         finally:
             self.after(0, lambda: self.start_button.configure(state="normal"))
-
 
 if __name__ == "__main__":
     app = ImageCrawlerApp()
