@@ -6,7 +6,9 @@ import threading
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, TimeoutException
 
 class ImageCrawlerApp(ctk.CTk):
     def __init__(self):
@@ -55,73 +57,87 @@ class ImageCrawlerApp(ctk.CTk):
 
         num_images = int(num_images_str)
 
-        # Disable button during crawling
         self.start_button.configure(state="disabled")
-
-        # Run crawling in a separate thread
         crawl_thread = threading.Thread(target=self.crawl_images, args=(keyword, num_images))
         crawl_thread.start()
 
+    def update_gui(self, text=None, progress=None):
+        if text:
+            self.status_label.configure(text=text)
+        if progress is not None:
+            self.progress_bar.set(progress)
+
     def crawl_images(self, keyword, num_images):
         try:
-            self.after(0, lambda: self.status_label.configure(text="Status: Starting..."))
+            self.after(0, self.update_gui, "Status: Starting...")
             self.after(0, lambda: self.progress_bar.set(0))
 
-            # Setup WebDriver using Selenium Manager
             options = webdriver.ChromeOptions()
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             driver = webdriver.Chrome(options=options)
 
-            # Create directory to save images
             if not os.path.exists(keyword):
                 os.makedirs(keyword)
 
-            # Go to Google Images
             driver.get(f"https://www.google.com/search?q={keyword}&tbm=isch")
 
-
-            # Scroll to load more images
-            last_height = driver.execute_script("return document.body.scrollHeight")
             image_urls = set()
+            last_height = driver.execute_script("return document.body.scrollHeight")
+
+            self.after(0, self.update_gui, "Status: Searching for images...")
 
             while len(image_urls) < num_images:
+                # Scroll down
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(2)
-                new_height = driver.execute_script("return document.body.scrollHeight")
-                if new_height == last_height:
-                    try:
-                        # Click "Show more results" button if it exists
-                        more_results_button = driver.find_element(By.CSS_SELECTOR, ".mye4qd")
-                        if more_results_button:
-                            more_results_button.click()
-                            time.sleep(2)
-                    except (NoSuchElementException, ElementClickInterceptedException):
-                        # If no more results button, break
-                        break
-                last_height = new_height
 
-                # Get image thumbnails
-                thumbnails = driver.find_elements(By.CSS_SELECTOR, "img.Q4LuWd")
+                # Find thumbnails
+                thumbnails = driver.find_elements(By.CSS_SELECTOR, "img.rg_i")
 
                 for img in thumbnails[len(image_urls):num_images]:
                     try:
-                        img.click()
+                        # Click on the thumbnail
+                        driver.execute_script("arguments[0].click();", img)
                         time.sleep(1)
-                        # Extract image source from the larger preview
-                        images = driver.find_elements(By.CSS_SELECTOR, 'img.sFlh5c.pT0Scc.iPVvYb')
-                        for image in images:
-                            src = image.get_attribute('src')
-                            if src and ('http' in src) and src not in image_urls:
-                                 image_urls.add(src)
-                                 if len(image_urls) >= num_images:
-                                     break
+
+                        # Wait for the high-res image to load and extract its URL
+                        wait = WebDriverWait(driver, 10)
+                        high_res_images = wait.until(
+                            EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'img.sFlh5c'))
+                        )
+
+                        for high_res_img in high_res_images:
+                            src = high_res_img.get_attribute("src")
+                            if src and src.startswith('http') and src not in image_urls:
+                                image_urls.add(src)
+                                self.after(0, self.update_gui, f"Status: Found {len(image_urls)}/{num_images} images...")
+                                if len(image_urls) >= num_images:
+                                    break
                         if len(image_urls) >= num_images:
                             break
+
+                    except (ElementClickInterceptedException, TimeoutException):
+                        continue # Skip if thumbnail is not clickable or high-res image doesn't load
                     except Exception as e:
-                        print(f"Error clicking thumbnail: {e}")
-                        continue
+                        print(f"Error collecting image URL: {e}")
+
+                # Check if we need to load more results
+                new_height = driver.execute_script("return document.body.scrollHeight")
+                if new_height == last_height:
+                    try:
+                        # Try to click the "Show more results" button
+                        more_results_button = driver.find_element(By.CSS_SELECTOR, "input.mye4qd")
+                        if more_results_button.is_displayed():
+                            driver.execute_script("arguments[0].click();", more_results_button)
+                            time.sleep(2)
+                        else:
+                            break # No more results to load
+                    except NoSuchElementException:
+                        break # Reached the end of the page
+                last_height = new_height
+
 
             # Download images
             downloaded_count = 0
@@ -130,16 +146,12 @@ class ImageCrawlerApp(ctk.CTk):
                     response = requests.get(url, stream=True, timeout=10)
                     response.raise_for_status()
 
-                    # Try to determine file extension
                     content_type = response.headers.get('content-type')
-                    extension = ".jpg" # default
+                    extension = ".jpg"
                     if content_type:
-                        if 'jpeg' in content_type.lower():
-                            extension = ".jpg"
-                        elif 'png' in content_type.lower():
-                            extension = ".png"
-                        elif 'gif' in content_type.lower():
-                            extension = ".gif"
+                        if 'jpeg' in content_type.lower(): extension = ".jpg"
+                        elif 'png' in content_type.lower(): extension = ".png"
+                        elif 'gif' in content_type.lower(): extension = ".gif"
 
                     filepath = f"{keyword}/image_{i+1}{extension}"
                     with open(filepath, 'wb') as f:
@@ -147,24 +159,18 @@ class ImageCrawlerApp(ctk.CTk):
                             f.write(chunk)
 
                     downloaded_count += 1
-                    # Update progress bar
                     progress = downloaded_count / num_images
-                    status_text = f"Status: Downloading image {downloaded_count}/{num_images}"
-                    self.after(0, lambda p=progress: self.progress_bar.set(p))
-                    self.after(0, lambda s=status_text: self.status_label.configure(text=s))
-
+                    self.after(0, self.update_gui, f"Status: Downloading {downloaded_count}/{num_images}...", progress)
 
                 except Exception as e:
                     print(f"Could not download {url}. Error: {e}")
 
             driver.quit()
-            status_text = f"Status: Download complete! {downloaded_count} images saved."
-            self.after(0, lambda: self.status_label.configure(text=status_text))
+            self.after(0, self.update_gui, f"Status: Download complete! {downloaded_count} images saved.")
 
         except Exception as e:
-            self.after(0, lambda e=e: self.status_label.configure(text=f"Status: An error occurred: {e}"))
+            self.after(0, self.update_gui, f"Status: An error occurred: {e}")
         finally:
-            # Re-enable button
             self.after(0, lambda: self.start_button.configure(state="normal"))
 
 
