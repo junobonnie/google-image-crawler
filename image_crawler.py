@@ -89,8 +89,11 @@ class ImageCrawlerApp(ctk.CTk):
             driver = webdriver.Chrome(options=options)
 
             # 키워드 이름으로 폴더가 없으면 생성합니다.
-            if not os.path.exists(keyword):
-                os.makedirs(keyword)
+            safe_folder_name = keyword.replace(" ", "_").replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace('"', "_").replace("<", "_").replace(">", "_").replace("|", "_")
+            
+            # 키워드 이름으로 폴더가 없으면 생성합니다.
+            if not os.path.exists(safe_folder_name):
+                os.makedirs(safe_folder_name)
 
             # Google 이미지 검색 페이지로 이동합니다.
             driver.get(f"https://www.google.com/search?q={keyword}&tbm=isch")
@@ -107,8 +110,8 @@ class ImageCrawlerApp(ctk.CTk):
                 time.sleep(2)  # 이미지가 로드될 때까지 잠시 기다립니다.
 
                 # 썸네일 이미지 요소를 모두 찾습니다.
-                thumbnails = driver.find_elements(By.CSS_SELECTOR, "img.rg_i")
-
+                thumbnails = driver.find_elements(By.CSS_SELECTOR, ".mNsIhb img")
+                print(thumbnails)
                 # 새로 로드된 썸네일 이미지만큼 반복합니다.
                 for img in thumbnails[len(image_urls):]:
                     try:
@@ -173,7 +176,7 @@ class ImageCrawlerApp(ctk.CTk):
                         elif 'gif' in content_type.lower(): extension = ".gif"
 
                     # 이미지 파일을 저장합니다.
-                    filepath = f"{keyword}/image_{i+1}{extension}"
+                    filepath = f"{safe_folder_name}/image_{i+1}{extension}"
                     with open(filepath, 'wb') as f:
                         for chunk in response.iter_content(chunk_size=8192):
                             f.write(chunk)
